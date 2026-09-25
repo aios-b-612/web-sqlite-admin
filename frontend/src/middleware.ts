@@ -31,9 +31,10 @@ export default auth((req) => {
 
     /**
      * SSO web-auth: gate no cliente (AuthRouteGuard).
+     * Painel SQLite por senha: auth na API Rust (PASSWORD) — sem NextAuth.
      * NextAuth local só para scaffold sem NEXT_PUBLIC_AUTH_*.
      */
-    if (appConfig.centralAuthEnabled) {
+    if (appConfig.centralAuthEnabled || appConfig.panelPasswordAuth) {
         return
     }
 
