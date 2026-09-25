@@ -15,6 +15,8 @@ pub struct BrowseQuery {
     pub limit: i64,
     #[serde(default)]
     pub offset: i64,
+    pub q: Option<String>,
+    pub column: Option<String>,
 }
 
 fn default_limit() -> i64 {
@@ -61,7 +63,14 @@ pub async fn browse_rows(
     state.auth.authenticate(&req).await?;
     let TablePath { name, table } = path.into_inner();
     let conn = state.store.open(&name)?;
-    let result = db::browse_rows(&conn, &table, query.limit, query.offset)?;
+    let result = db::browse_rows_filtered(
+        &conn,
+        &table,
+        query.limit,
+        query.offset,
+        query.q.as_deref(),
+        query.column.as_deref(),
+    )?;
     Ok(HttpResponse::Ok().json(json!({
         "status": true,
         "table": table,
@@ -70,5 +79,7 @@ pub async fn browse_rows(
         "total": result.total,
         "limit": result.limit,
         "offset": result.offset,
+        "q": query.q,
+        "column": query.column,
     })))
 }

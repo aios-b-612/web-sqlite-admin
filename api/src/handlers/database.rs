@@ -66,3 +66,62 @@ pub async fn create_database(
         "name": name,
     })))
 }
+
+#[derive(Deserialize)]
+pub struct RenameDbBody {
+    pub to: String,
+}
+
+pub async fn rename_database(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    body: web::Json<RenameDbBody>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    state.store.rename_database(&path.name, &body.to)?;
+    let mut to = body.to.trim().to_string();
+    if !to.contains('.') {
+        to.push_str(".sqlite");
+    }
+    Ok(HttpResponse::Ok().json(json!({
+        "status": true,
+        "name": to,
+    })))
+}
+
+pub async fn delete_database(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    state.store.delete_database(&path.name)?;
+    Ok(HttpResponse::Ok().json(json!({ "status": true })))
+}
+
+pub async fn vacuum_database(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    db::vacuum(&conn)?;
+    Ok(HttpResponse::Ok().json(json!({ "status": true })))
+}
+
+pub async fn integrity_database(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    let result = db::integrity_check(&conn)?;
+    Ok(HttpResponse::Ok().json(json!({
+        "status": true,
+        "result": result,
+        "ok": result.eq_ignore_ascii_case("ok"),
+    })))
+}
