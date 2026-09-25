@@ -1,0 +1,41 @@
+---
+description: Git Flow clássico absoluto — proibido editar em main; feature → dev → main
+alwaysApply: true
+---
+
+# Git Flow — regra absoluta (0ctor)
+
+## Proibido editar em `main` (absoluto)
+
+- **Nunca** editar, criar, apagar ou renomear arquivos com o working tree em `main`.
+- **Nunca** `git commit` / `git push` em `main` (nem hotfix “rápido” no checkout de `main`).
+- Antes de qualquer mudança: `git branch --show-current` — se for `main`, **parar**, criar/trocar para `feature/*` ou `fix/*`, e só então editar.
+
+## Branches
+
+- Integração: **`dev`**
+- Produção / deploy: **`main`**
+- `main` e `dev` protegidas: **só via PR** (sem push direto; sem force-push)
+
+## Fluxo clássico (obrigatório)
+
+1. `feature/<nome>` ou `fix/<nome>` a partir de **`dev`**
+2. PR → merge em **`dev`**
+3. Produção: PR **`dev` → `main`**
+4. **Deploy só em push/merge em `main`**
+5. **Não** há sync automático **`main` → `dev`** após o promote
+
+## Hotfix
+
+`fix/<nome>` ← **`main`** → PR → **`main`** (deploy).
+
+- Checkout de `main` só para **criar** a branch `fix/*`; commits só em `fix/*`.
+- Em seguida: PR ou cherry-pick do mesmo fix para **`dev`**.
+
+## Proibido
+
+- Editar / commit / push em `main` ou `dev`
+- Deploy a partir de `dev` / feature
+- Branch `release/*`
+- PR feature → `main` sem passar por `dev` (exceto hotfix)
+- Script / chore `sync-main-into-dev` / `auto-sync-main-into-dev`

@@ -1,0 +1,50 @@
+---
+description: Proteção de dados sensíveis e LGPD em migrações e UI clínica
+alwaysApply: true
+---
+
+# Segurança — Dados sensíveis
+
+Adaptado de **web-agenda** e **web-medical-record**.
+
+Este hub manipula **dados de saúde** (pacientes, atendimentos, agendamentos). Sujeito à **LGPD**.
+
+## Proibições absolutas
+
+```typescript
+// PROIBIDO — dados de paciente
+console.log('Paciente:', patient)
+console.log('Resposta da API:', response)
+console.log('CSV row:', rowWithCpf)
+
+// PROIBIDO — tokens
+console.log('Token:', token)
+
+// PROIBIDO — em URL
+router.push(`/settings?cpf=${cpf}`)
+```
+
+## Console permitido
+
+```typescript
+console.error('Falha na importação iClinic:', error.message)
+console.warn('Lote 3/10 falhou — ver relatório na UI')
+```
+
+## Regras
+
+1. **Proibido** `console.log` / `debug` / `info` com payloads em produção.
+2. **Proibido** logar: tokens, CPF, telefone, nome completo, conteúdo clínico, base64 de imagens.
+3. Ao encontrar log sensível em arquivo tocado, **remover**.
+4. Dados de importação CSV ficam em memória do browser durante o wizard — **não** persistir export iClinic em localStorage.
+5. Ferramentas destrutivas (`iclinic-cleanup`): só localhost na UI; backend bloqueia em produção.
+
+## Token (débito técnico conhecido)
+
+O projeto herda token em `localStorage` + cookie (padrão web-stock). **Não expandir** esse padrão. Novo código de auth deve alinhar-se ao roadmap de cookie HttpOnly quando migrado. Sinalizar `[SEGURANÇA]` se propor novos usos de localStorage para credenciais.
+
+## Checklist
+
+- [ ] Nenhum dado de paciente em log/URL?
+- [ ] Relatórios de importação mostram linha/pk, não dump completo de PII desnecessário?
+- [ ] Cleanup exige confirmação tripla e validação de `company_uuid`?

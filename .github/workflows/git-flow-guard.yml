@@ -1,0 +1,37 @@
+# Bloqueia PR feature/chore → main.
+# Fluxo correto: feature/* → PR → dev → PR → main (deploy só em main).
+# Exceções em main: head = dev (promote) ou hotfix/* | fix/* (hotfix).
+# Proibido editar código diretamente em main.
+
+name: Git Flow Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches: [main]
+
+jobs:
+  guard:
+    name: Only dev/hotfix → main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce feature → dev → main
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          echo "PR ${BASE_REF} ← ${HEAD_REF}"
+
+          if [[ "$HEAD_REF" == "dev" ]]; then
+            echo "OK: promote dev → main"
+            exit 0
+          fi
+
+          if [[ "$HEAD_REF" == hotfix/* || "$HEAD_REF" == fix/* ]]; then
+            echo "OK: hotfix → main (devolver o mesmo fix para dev)"
+            exit 0
+          fi
+
+          echo "::error title=Git flow inválido::PR para main só pode vir de 'dev' (promote) ou 'hotfix/*'/'fix/*' (hotfix). Proibido editar código em main. Fluxo: feature → dev → main."
+          exit 1

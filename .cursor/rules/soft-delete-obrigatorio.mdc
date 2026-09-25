@@ -1,0 +1,62 @@
+---
+description: Soft delete obrigatório em todo o ecossistema Octor — padrão deleted_at (mercado)
+alwaysApply: true
+---
+
+# Soft delete obrigatório — ecossistema Octor
+
+Regra de negócio central: **nenhum usuário operacional** (médico, secretário(a),
+owner ou qualquer papel de cliente) pode **apagar dados de verdade** (hard delete)
+dentro dos sistemas. Toda exclusão feita por esses usuários é **soft delete**.
+
+Vale para **todas as apps `0ctor/*`** (agenda, prontuário, CRM, financeiro,
+estoque, auth, …), backend e API.
+
+## Padrão canônico (mercado)
+
+Colunas obrigatórias em toda entidade deletável:
+
+| Coluna | Tipo | Semântica |
+|--------|------|-----------|
+| `deleted_at` | `TIMESTAMP NULL` | `NULL` = ativo; preenchido = soft-deleted (quando) |
+| `deleted_by` | FK / UUID NULL | quem deletou (auditoria / suporte) |
+
+- **Deletar (UI/API de usuário)** = `UPDATE … SET deleted_at = now(), deleted_by = $user` — nunca `DELETE FROM`.
+- **Listar / ler (padrão)** = sempre `WHERE deleted_at IS NULL`. Soft-deleted some da UI do usuário final.
+- **Restaurar (admin/suporte)** = `SET deleted_at = NULL, deleted_by = NULL`.
+- **Hard delete** = só fluxo restrito a admin/suporte (LGPD / retenção legal).
+
+Não usar `is_deleted` booleano como marcador principal: `deleted_at` já carrega estado **e** momento (padrão Rails/Laravel/Eloquent e do ecossistema Octor atual).
+
+## Obrigatório
+
+1. Schema novo / migração: incluir `deleted_at` + `deleted_by` nas tabelas deletáveis.
+2. Unique constraints que precisam permitir “recriar” após soft delete: índice parcial / filtrado `WHERE deleted_at IS NULL`.
+3. Evitar `ON DELETE CASCADE` físico em FKs de entidades soft-deletáveis — preferir soft delete em cascata na aplicação, se necessário.
+4. Endpoints `DELETE` HTTP de usuário final mapeiam para soft delete, não para remoção física.
+
+## Proibido
+
+- Hard delete / `TRUNCATE` por ação de médico, secretário ou owner.
+- Listagem que ignore `deleted_at IS NULL` e vaze registros removidos.
+- Expor restore/hard-delete na UI do usuário comum.
+
+## Exemplo
+
+```sql
+-- ❌ NÃO (ação de usuário final)
+DELETE FROM appointments WHERE id = $1;
+
+-- ✅ Soft delete
+UPDATE appointments
+   SET deleted_at = now(), deleted_by = $current_user
+ WHERE id = $1 AND deleted_at IS NULL;
+
+-- ✅ Leitura padrão
+SELECT * FROM appointments WHERE deleted_at IS NULL;
+
+-- ✅ Restore (admin/suporte)
+UPDATE appointments
+   SET deleted_at = NULL, deleted_by = NULL
+ WHERE id = $1;
+```

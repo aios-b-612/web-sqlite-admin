@@ -1,0 +1,23 @@
+---
+description: Padrões Octor (org) + ponteiro para AGENTS.md deste repo
+alwaysApply: true
+---
+
+# Octor — `template-frontend`
+
+Leia **`AGENTS.md`** na raiz deste repositório antes de arquitetura, auth, deploy ou padrões cross-app.
+
+## Org (sempre)
+
+- Git: `feature/*` ← `dev` → `main` (deploy só `main`); **proibido editar em `main`**
+- Auth: `web-auth` — não reinventar login
+- Loki: push só no backend; FE via `/errors/report` na API (sem senha no browser)
+- Soft delete: `deleted_at` / `deleted_by` — nunca hard delete por usuário operacional
+- Agente ops: **Alfred**
+- Segredos: nunca commit em `.env`
+- Marca: primary `#0CAF60` (não o azul Ecme `#2a85ff` no default)
+
+## Plataforma (sob demanda)
+
+- https://github.com/0ctor/sp1-sd-octor-1/blob/main/AGENTS.md
+- https://github.com/0ctor/web-backstage

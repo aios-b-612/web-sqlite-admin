@@ -1,0 +1,32 @@
+{
+  "repos": {
+    "0ctor/web-foo": {
+      "branch": "main",
+      "app": "web-foo",
+      "kind": "single",
+      "script": "/home/ubuntu/octor/scripts/deploy/app.sh",
+      "images": {
+        "web": "ghcr.io/0ctor/web-foo"
+      },
+      "build": {
+        "enabled": true,
+        "dockerfile": "Dockerfile",
+        "context": ".",
+        "args": {
+          "NEXT_PUBLIC_APP_URL": "https://foo.octor.com.br",
+          "NEXT_PUBLIC_API_URL": "https://foo.octor.com.br",
+          "NEXT_PUBLIC_AUTH_API_URL": "https://auth.octor.com.br/v1",
+          "NEXT_PUBLIC_AUTH_PORTAL_URL": "https://auth.octor.com.br",
+          "NEXT_PUBLIC_APP_ID": "foo",
+          "NEXT_PUBLIC_APP_MENU_ENV": "production",
+          "NEXT_PUBLIC_CENTRAL_AUTH_ENABLED": "true"
+        }
+      },
+      "health": {
+        "container": "octor-web-foo",
+        "url": "http://127.0.0.1:3000/api/health/ready",
+        "public": "https://foo.octor.com.br/api/health/ready"
+      }
+    }
+  }
+}

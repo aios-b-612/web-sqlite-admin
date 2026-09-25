@@ -1,0 +1,26 @@
+---
+description: Primary do template Next é verde Octor, nunca o azul Ecme
+globs: src/configs/theme.config.ts,src/configs/preset-theme-schema.config.ts,src/assets/styles/tailwind/index.css
+alwaysApply: false
+---
+
+# Cores Octor (template Next / Ecme)
+
+O azul `#2a85ff` é o default do **Ecme**, não da Octor.
+
+## Obrigatório
+
+- Primary canônico: `#0CAF60` / deep `#088d50` / mild `#34c779` / subtle `#0CAF601a`
+- `themeConfig.themeSchema` = `default` (que aponta para o verde)
+- CSS `:root` e `.dark` `--primary*` iguais ao verde (first paint sem flash azul)
+- App novo a partir deste template **não** recoloca o azul como default
+
+```ts
+// ❌ default do Ecme
+primary: '#2a85ff'
+themeSchema: ''
+
+// ✅ Octor
+primary: '#0CAF60'
+themeSchema: 'default'
+```

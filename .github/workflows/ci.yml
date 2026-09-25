@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+jobs:
+  check:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm test
+      - name: Build (SSO scaffold off)
+        env:
+          NEXT_PUBLIC_CENTRAL_AUTH_ENABLED: 'false'
+          AUTH_SECRET: ci-build-secret
+          AUTH_TRUST_HOST: 'true'
+          NEXTAUTH_URL: http://localhost:3000/
+        run: npm run build
