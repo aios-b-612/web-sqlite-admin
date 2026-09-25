@@ -1,0 +1,38 @@
+name: Publish sidecar image
+
+# Publica ghcr.io/0ctor/web-sqlite-admin:sidecar a partir de main.
+# Requer Actions com billing OK + permissão packages:write.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'frontend/**'
+      - 'Dockerfile.sidecar'
+      - 'scripts/sidecar-entrypoint.sh'
+      - '.github/workflows/publish-sidecar.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  sidecar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.sidecar
+          push: true
+          tags: |
+            ghcr.io/0ctor/web-sqlite-admin:sidecar
+            ghcr.io/0ctor/web-sqlite-admin:sidecar-${{ github.sha }}
