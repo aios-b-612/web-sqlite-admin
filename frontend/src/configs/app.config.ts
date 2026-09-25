@@ -7,6 +7,8 @@ export type AppConfig = {
   authApiPrefix: string
   authPortalOrigin: string
   centralAuthEnabled: boolean
+  /** Sidecar hosting: login por senha na API (sem NextAuth/SSO). */
+  panelPasswordAuth: boolean
   authenticatedEntryPath: string
   unAuthenticatedEntryPath: string
   locale: string
@@ -32,6 +34,10 @@ const authPortalOrigin = resolveAuthPortalOrigin({
 const centralForcedOff =
   process.env.NEXT_PUBLIC_CENTRAL_AUTH_ENABLED === 'false'
 
+/** Default on: este produto é o admin SQLite do hosting (senha = PASSWORD da API). */
+const panelPasswordAuth =
+  process.env.NEXT_PUBLIC_SQLITE_PANEL_PASSWORD_AUTH !== 'false'
+
 const appConfig: AppConfig = {
   apiPrefix: isDev
     ? '/api'
@@ -40,11 +46,13 @@ const appConfig: AppConfig = {
   authPortalOrigin,
   centralAuthEnabled:
     !centralForcedOff &&
+    !panelPasswordAuth &&
     Boolean(
       authPortalOrigin ||
         authApiPrefix.startsWith('http://') ||
         authApiPrefix.startsWith('https://'),
     ),
+  panelPasswordAuth,
   authenticatedEntryPath: '/home',
   unAuthenticatedEntryPath: '/sign-in',
   locale: 'pt-br',

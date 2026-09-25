@@ -1,0 +1,23 @@
+{
+  "repos": {
+    "0ctor/platform-foo": {
+      "branch": "main",
+      "app": "platform-foo",
+      "kind": "single",
+      "script": "/home/ubuntu/octor/scripts/deploy/app.sh",
+      "images": {
+        "web": "ghcr.io/0ctor/platform-foo"
+      },
+      "build": {
+        "enabled": true,
+        "dockerfile": "Dockerfile",
+        "context": "."
+      },
+      "health": {
+        "container": "octor-platform-foo",
+        "url": "http://127.0.0.1:8080/health/ready",
+        "public": "https://foo.octor.com.br/health/ready"
+      }
+    }
+  }
+}

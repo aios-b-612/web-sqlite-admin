@@ -1,22 +1,46 @@
-# Exemplo de compose no host sp1 (`/home/ubuntu/octor/apps/<app>/`).
-# Ajuste nomes, host Traefik e IMAGE. Dual FE+API: ver web-services / web-compliance.
-#
-# name: web-foo
+# Exemplo dual FE+API (PaaS) ou referência local.
+# Sidecar do hosting: preferir Dockerfile.sidecar (uma imagem :80).
+
 services:
-  web:
-    image: ${IMAGE:-ghcr.io/0ctor/template-frontend:latest}
-    container_name: octor-template-frontend
+  api:
+    image: ${IMAGE_API:-ghcr.io/0ctor/web-sqlite-admin-api:latest}
+    container_name: octor-web-sqlite-admin-api
     restart: unless-stopped
     environment:
       TZ: America/Sao_Paulo
-      OCTOR_SERVICE_NAME: template-frontend
-      # BUSINESS_API_INTERNAL_URL: http://octor-web-foo-api:PORT
-      AUTH_SECRET: ${AUTH_SECRET:?}
-      AUTH_TRUST_HOST: "true"
-      NEXTAUTH_URL: https://foo.octor.com.br
+      BIND_ADDRESS: 0.0.0.0:8080
+      OCTOR_SERVICE_NAME: web-sqlite-admin-api
+      PASSWORD: ${PASSWORD:?}
+      LOCATION: ${LOCATION:-/db/databases}
+      ALLOWED_CORS_ORIGINS: ${ALLOWED_CORS_ORIGINS:-http://localhost:3000}
+    volumes:
+      - ${SQLITE_HOST_DIR:-./data}:/db
     networks:
       - proxy
       - octor
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  web:
+    image: ${IMAGE_WEB:-ghcr.io/0ctor/web-sqlite-admin:latest}
+    container_name: octor-web-sqlite-admin
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+      OCTOR_SERVICE_NAME: web-sqlite-admin
+      BUSINESS_API_INTERNAL_URL: http://octor-web-sqlite-admin-api:8080
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-change-me}
+      AUTH_TRUST_HOST: "true"
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+    networks:
+      - proxy
+      - octor
+    depends_on:
+      - api
     healthcheck:
       test:
         [
@@ -27,19 +51,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 25s
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=proxy
-      - traefik.http.routers.template-frontend.rule=Host(`foo.octor.com.br`)
-      - traefik.http.routers.template-frontend.entrypoints=websecure
-      - traefik.http.routers.template-frontend.tls.certresolver=letsencrypt
-      - traefik.http.routers.template-frontend.priority=10
-      - traefik.http.services.template-frontend.loadbalancer.server.port=3000
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 networks:
   proxy:

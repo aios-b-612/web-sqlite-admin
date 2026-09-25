@@ -1,0 +1,48 @@
+# Exemplo de compose no host sp1 (`/home/ubuntu/octor/apps/<app>/`).
+# Ajuste nomes, host Traefik e IMAGE. Dual FE+API: ver web-services / web-compliance.
+#
+# name: web-foo
+services:
+  web:
+    image: ${IMAGE:-ghcr.io/0ctor/template-frontend:latest}
+    container_name: octor-template-frontend
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+      OCTOR_SERVICE_NAME: template-frontend
+      # BUSINESS_API_INTERNAL_URL: http://octor-web-foo-api:PORT
+      AUTH_SECRET: ${AUTH_SECRET:?}
+      AUTH_TRUST_HOST: "true"
+      NEXTAUTH_URL: https://foo.octor.com.br
+    networks:
+      - proxy
+      - octor
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.template-frontend.rule=Host(`foo.octor.com.br`)
+      - traefik.http.routers.template-frontend.entrypoints=websecure
+      - traefik.http.routers.template-frontend.tls.certresolver=letsencrypt
+      - traefik.http.routers.template-frontend.priority=10
+      - traefik.http.services.template-frontend.loadbalancer.server.port=3000
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  proxy:
+    external: true
+  octor:
+    external: true

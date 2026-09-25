@@ -1,0 +1,41 @@
+# Exemplo de compose no host sp1 (`/home/ubuntu/octor/apps/<app>/`).
+# Dual FE+API: combine com template-frontend (IMAGE_WEB + IMAGE_API).
+
+services:
+  api:
+    image: ${IMAGE:-ghcr.io/0ctor/template-api-rust:latest}
+    container_name: octor-template-api-rust
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      TZ: America/Sao_Paulo
+      BIND_ADDRESS: 0.0.0.0:8080
+      OCTOR_SERVICE_NAME: template-api-rust
+    networks:
+      - proxy
+      - octor
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.template-api-rust.rule=Host(`foo.octor.com.br`) && PathPrefix(`/v1`) || Host(`foo.octor.com.br`) && PathPrefix(`/health`)
+      - traefik.http.routers.template-api-rust.entrypoints=websecure
+      - traefik.http.routers.template-api-rust.tls.certresolver=letsencrypt
+      - traefik.http.routers.template-api-rust.priority=100
+      - traefik.http.services.template-api-rust.loadbalancer.server.port=8080
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  proxy:
+    external: true
+  octor:
+    external: true
