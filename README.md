@@ -37,10 +37,14 @@ Esta API aceita os **mesmos** nomes (`PASSWORD` / `LOCATION`). Aliases: `ADMIN_P
 | GET | `/v1/databases/{name}/export.sql` | Bearer |
 | POST | `/v1/databases/{name}/import` | Bearer |
 | GET | `/v1/databases/{name}/objects` | Bearer |
+| PATCH/DELETE | `/v1/databases/{name}` | Bearer (rename / apagar ficheiro) |
+| POST | `/v1/databases/{name}/vacuum` | Bearer |
+| GET | `/v1/databases/{name}/integrity` | Bearer |
+| GET | `…/tables/{table}/rows?q=&column=` | Bearer (busca LIKE) |
 | POST/DELETE | `/v1/databases/{name}/schema/indexes|views|triggers` | Bearer |
 | GET | `/health/live` · `/health/ready` | não |
 
-UI: login, bases, tabelas, browse, CRUD, schema (tabela/coluna/índice/view/trigger), import/export SQL, console.
+UI: login, bases (criar/renomear/apagar), tabelas, busca, CRUD, schema, import/export, VACUUM/integrity, console.
 
 ## Dev local
 

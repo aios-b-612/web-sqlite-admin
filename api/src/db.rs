@@ -116,6 +116,42 @@ impl SqliteStore {
             .map_err(|e| ApiError::Internal(anyhow::anyhow!("readiness SQLite dir: {e}")))?;
         Ok(())
     }
+
+    pub fn rename_database(&self, from: &str, to: &str) -> Result<(), ApiError> {
+        let src = self.resolve(from)?;
+        if !src.exists() {
+            return Err(ApiError::NotFound);
+        }
+        let mut dest_name = to.trim().to_string();
+        if dest_name.is_empty() {
+            return Err(ApiError::BadRequest("novo nome é obrigatório".into()));
+        }
+        if !dest_name.contains('.') {
+            dest_name.push_str(".sqlite");
+        }
+        let dest = self.resolve(&dest_name)?;
+        if dest.exists() {
+            return Err(ApiError::BadRequest("destino já existe".into()));
+        }
+        fs::rename(&src, &dest)
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("renomear {}: {e}", src.display())))?;
+        Ok(())
+    }
+
+    pub fn delete_database(&self, name: &str) -> Result<(), ApiError> {
+        let path = self.resolve(name)?;
+        if !path.exists() {
+            return Err(ApiError::NotFound);
+        }
+        fs::remove_file(&path)
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("apagar {}: {e}", path.display())))?;
+        // sidecars SQLite (-wal/-shm)
+        for suffix in ["-wal", "-shm"] {
+            let side = PathBuf::from(format!("{}{suffix}", path.display()));
+            let _ = fs::remove_file(side);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -188,30 +224,70 @@ pub struct ColumnInfo {
     pub pk: bool,
 }
 
-pub fn browse_rows(
+pub fn browse_rows_filtered(
     conn: &Connection,
     table: &str,
     limit: i64,
     offset: i64,
+    q: Option<&str>,
+    column: Option<&str>,
 ) -> Result<BrowseResult, ApiError> {
     validate_ident(table)?;
     let limit = limit.clamp(1, 500);
     let offset = offset.max(0);
     let columns = table_columns(conn, table)?;
-    let count: i64 = conn
-        .query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), [], |row| {
+
+    let mut where_sql = String::new();
+    let mut bind: Vec<rusqlite::types::Value> = Vec::new();
+    if let Some(term) = q.map(str::trim).filter(|s| !s.is_empty()) {
+        if term.len() > 200 {
+            return Err(ApiError::BadRequest(
+                "termo de busca demasiado longo".into(),
+            ));
+        }
+        let like = format!("%{term}%");
+        let search_cols: Vec<&ColumnInfo> = if let Some(col) = column {
+            validate_ident(col)?;
+            columns.iter().filter(|c| c.name == col).collect()
+        } else {
+            columns.iter().collect()
+        };
+        if search_cols.is_empty() {
+            return Err(ApiError::BadRequest("coluna de busca inválida".into()));
+        }
+        let parts: Vec<String> = search_cols
+            .iter()
+            .map(|c| format!("CAST(\"{}\" AS TEXT) LIKE ? ESCAPE '\\'", c.name))
+            .collect();
+        where_sql = format!(" WHERE {}", parts.join(" OR "));
+        for _ in &search_cols {
+            bind.push(rusqlite::types::Value::Text(like.clone()));
+        }
+    }
+
+    let count_sql = format!("SELECT COUNT(*) FROM \"{table}\"{where_sql}");
+    let count: i64 = if bind.is_empty() {
+        conn.query_row(&count_sql, [], |row| row.get(0))
+            .map_err(map_sqlite)?
+    } else {
+        conn.query_row(&count_sql, rusqlite::params_from_iter(bind.iter()), |row| {
             row.get(0)
         })
-        .map_err(map_sqlite)?;
+        .map_err(map_sqlite)?
+    };
 
-    let sql = format!("SELECT rowid AS __rowid__, * FROM \"{table}\" LIMIT ? OFFSET ?");
+    let sql = format!("SELECT rowid AS __rowid__, * FROM \"{table}\"{where_sql} LIMIT ? OFFSET ?");
+    let mut data_bind = bind.clone();
+    data_bind.push(rusqlite::types::Value::Integer(limit));
+    data_bind.push(rusqlite::types::Value::Integer(offset));
+
     let mut stmt = conn.prepare(&sql).map_err(map_sqlite)?;
     let column_count = stmt.column_count();
     let col_names: Vec<String> = (0..column_count)
         .map(|idx| stmt.column_name(idx).unwrap_or("?").to_string())
         .collect();
     let mut rows_iter = stmt
-        .query(rusqlite::params![limit, offset])
+        .query(rusqlite::params_from_iter(data_bind.iter()))
         .map_err(map_sqlite)?;
     let mut rows = Vec::new();
     while let Some(row) = rows_iter.next().map_err(map_sqlite)? {
@@ -772,6 +848,18 @@ pub fn drop_trigger(conn: &Connection, name: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
+pub fn vacuum(conn: &Connection) -> Result<(), ApiError> {
+    conn.execute_batch("VACUUM;").map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn integrity_check(conn: &Connection) -> Result<String, ApiError> {
+    let msg: String = conn
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .map_err(map_sqlite)?;
+    Ok(msg)
+}
+
 #[cfg(test)]
 mod crud_tests {
     use super::*;
@@ -808,13 +896,34 @@ mod crud_tests {
         let mut patch = Map::new();
         patch.insert("name".into(), json!("beta"));
         assert_eq!(update_row(&conn, "items", rowid, &patch).unwrap(), 1);
-        let browse = browse_rows(&conn, "items", 10, 0).unwrap();
+        let browse = browse_rows_filtered(&conn, "items", 10, 0, None, None).unwrap();
         assert_eq!(browse.total, 1);
         assert_eq!(browse.rows[0]["name"], json!("beta"));
         assert_eq!(delete_row(&conn, "items", rowid).unwrap(), 1);
-        assert_eq!(browse_rows(&conn, "items", 10, 0).unwrap().total, 0);
+        assert_eq!(
+            browse_rows_filtered(&conn, "items", 10, 0, None, None)
+                .unwrap()
+                .total,
+            0
+        );
         let dump = export_sql(&conn).unwrap();
         assert!(dump.contains("CREATE TABLE"));
+    }
+
+    #[test]
+    fn search_filters_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        import_sql(
+            &conn,
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);\
+             INSERT INTO t(name) VALUES ('alfa'), ('beta'), ('alfajor');",
+        )
+        .unwrap();
+        let all = browse_rows_filtered(&conn, "t", 50, 0, Some("alfa"), None).unwrap();
+        assert_eq!(all.total, 2);
+        let col = browse_rows_filtered(&conn, "t", 50, 0, Some("beta"), Some("name")).unwrap();
+        assert_eq!(col.total, 1);
+        assert_eq!(integrity_check(&conn).unwrap(), "ok");
     }
 
     #[test]

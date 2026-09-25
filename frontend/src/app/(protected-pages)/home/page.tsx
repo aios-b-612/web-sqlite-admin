@@ -102,6 +102,11 @@ const Page = () => {
     const [viewName, setViewName] = useState('')
     const [viewSql, setViewSql] = useState('SELECT 1 AS x')
     const [triggerSql, setTriggerSql] = useState('')
+    const [searchQ, setSearchQ] = useState('')
+    const [searchCol, setSearchCol] = useState('')
+    const [integrityMsg, setIntegrityMsg] = useState<string | null>(null)
+    const [newDbName, setNewDbName] = useState('')
+    const [renameTo, setRenameTo] = useState('')
 
     const limit = 50
 
@@ -183,7 +188,7 @@ const Page = () => {
         }
     }
 
-    const openTable = async (table: string, nextOffset = 0) => {
+    const openTable = async (table: string, nextOffset = 0, q = searchQ, column = searchCol) => {
         if (!token || !selectedDb) return
         setBusy(true)
         setError(null)
@@ -191,12 +196,18 @@ const Page = () => {
         setOffset(nextOffset)
         setEditingRowid(null)
         try {
+            const params = new URLSearchParams({
+                limit: String(limit),
+                offset: String(nextOffset),
+            })
+            if (q.trim()) params.set('q', q.trim())
+            if (column.trim()) params.set('column', column.trim())
             const data = await api<{
                 columns: ColumnInfo[]
                 rows: Record<string, unknown>[]
                 total: number
             }>(
-                `/v1/databases/${encodeURIComponent(selectedDb)}/tables/${encodeURIComponent(table)}/rows?limit=${limit}&offset=${nextOffset}`,
+                `/v1/databases/${encodeURIComponent(selectedDb)}/tables/${encodeURIComponent(table)}/rows?${params}`,
                 { token },
             )
             setColumns(data.columns)
@@ -578,6 +589,104 @@ const Page = () => {
         }
     }
 
+    const createDatabase = async () => {
+        if (!token || !newDbName.trim()) return
+        setBusy(true)
+        setError(null)
+        try {
+            const data = await api<{ name: string }>('/v1/databases', {
+                method: 'POST',
+                token,
+                body: JSON.stringify({ name: newDbName.trim() }),
+            })
+            setNewDbName('')
+            await loadDatabases(token)
+            await openDb(data.name)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro ao criar base')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const renameDatabase = async () => {
+        if (!token || !selectedDb || !renameTo.trim()) return
+        setBusy(true)
+        setError(null)
+        try {
+            const data = await api<{ name: string }>(
+                `/v1/databases/${encodeURIComponent(selectedDb)}`,
+                {
+                    method: 'PATCH',
+                    token,
+                    body: JSON.stringify({ to: renameTo.trim() }),
+                },
+            )
+            setRenameTo('')
+            await loadDatabases(token)
+            await openDb(data.name)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro ao renomear')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const deleteDatabase = async () => {
+        if (!token || !selectedDb) return
+        if (!window.confirm(`Apagar ficheiro "${selectedDb}"?`)) return
+        setBusy(true)
+        setError(null)
+        try {
+            await api(`/v1/databases/${encodeURIComponent(selectedDb)}`, {
+                method: 'DELETE',
+                token,
+            })
+            setSelectedDb(null)
+            setTables([])
+            setObjects([])
+            await loadDatabases(token)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro ao apagar base')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const runVacuum = async () => {
+        if (!token || !selectedDb) return
+        setBusy(true)
+        setError(null)
+        try {
+            await api(
+                `/v1/databases/${encodeURIComponent(selectedDb)}/vacuum`,
+                { method: 'POST', token },
+            )
+            await openDb(selectedDb)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro no VACUUM')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const runIntegrity = async () => {
+        if (!token || !selectedDb) return
+        setBusy(true)
+        setError(null)
+        try {
+            const data = await api<{ result: string; ok: boolean }>(
+                `/v1/databases/${encodeURIComponent(selectedDb)}/integrity`,
+                { token },
+            )
+            setIntegrityMsg(data.result)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro no integrity')
+        } finally {
+            setBusy(false)
+        }
+    }
+
     const columnNames = useMemo(() => {
         if (rows[0]) return Object.keys(rows[0])
         return columns.map((c) => c.name)
@@ -646,6 +755,22 @@ const Page = () => {
                     <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                         Bases
                     </h2>
+                    <div className="mb-2 flex gap-1">
+                        <input
+                            className="min-w-0 flex-1 rounded border px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-900"
+                            placeholder="nova.sqlite"
+                            value={newDbName}
+                            onChange={(e) => setNewDbName(e.target.value)}
+                        />
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={createDatabase}
+                            className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                        >
+                            +
+                        </button>
+                    </div>
                     <ul className="space-y-1">
                         {databases.map((db) => (
                             <li key={db.name}>
@@ -671,14 +796,61 @@ const Page = () => {
                 </section>
                 {selectedDb && (
                     <>
-                        <button
-                            type="button"
-                            onClick={exportSql}
-                            disabled={busy}
-                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-left text-sm hover:bg-gray-50 dark:border-gray-600"
-                        >
-                            Exportar .sql
-                        </button>
+                        <div className="flex flex-wrap gap-1">
+                            <button
+                                type="button"
+                                onClick={exportSql}
+                                disabled={busy}
+                                className="rounded-md border border-gray-300 px-2 py-1 text-xs dark:border-gray-600"
+                            >
+                                Export
+                            </button>
+                            <button
+                                type="button"
+                                onClick={runVacuum}
+                                disabled={busy}
+                                className="rounded-md border border-gray-300 px-2 py-1 text-xs dark:border-gray-600"
+                            >
+                                VACUUM
+                            </button>
+                            <button
+                                type="button"
+                                onClick={runIntegrity}
+                                disabled={busy}
+                                className="rounded-md border border-gray-300 px-2 py-1 text-xs dark:border-gray-600"
+                            >
+                                Integrity
+                            </button>
+                            <button
+                                type="button"
+                                onClick={deleteDatabase}
+                                disabled={busy}
+                                className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 dark:border-red-800"
+                            >
+                                Apagar base
+                            </button>
+                        </div>
+                        {integrityMsg && (
+                            <p className="text-xs text-gray-600 dark:text-gray-300">
+                                integrity: {integrityMsg}
+                            </p>
+                        )}
+                        <div className="flex gap-1">
+                            <input
+                                className="min-w-0 flex-1 rounded border px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-900"
+                                placeholder="renomear para…"
+                                value={renameTo}
+                                onChange={(e) => setRenameTo(e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={renameDatabase}
+                                className="rounded border px-2 py-1 text-xs dark:border-gray-600"
+                            >
+                                Rename
+                            </button>
+                        </div>
                         <section className="space-y-2 rounded-md border border-gray-200 p-2 dark:border-gray-700">
                             <h2 className="text-xs font-semibold uppercase text-gray-500">
                                 Importar SQL
@@ -1007,7 +1179,7 @@ const Page = () => {
                         </section>
 
                         <section className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-                            <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                                 <h2 className="text-sm font-semibold">
                                     {selectedTable}{' '}
                                     <span className="font-normal text-gray-500">
@@ -1045,6 +1217,53 @@ const Page = () => {
                                     </button>
                                 </div>
                             </div>
+                            <form
+                                className="mb-3 flex flex-wrap gap-2"
+                                onSubmit={(e) => {
+                                    e.preventDefault()
+                                    openTable(selectedTable, 0)
+                                }}
+                            >
+                                <input
+                                    className="min-w-[10rem] flex-1 rounded border px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-900"
+                                    placeholder="Buscar…"
+                                    value={searchQ}
+                                    onChange={(e) => setSearchQ(e.target.value)}
+                                />
+                                <select
+                                    className="rounded border px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-900"
+                                    value={searchCol}
+                                    onChange={(e) =>
+                                        setSearchCol(e.target.value)
+                                    }
+                                >
+                                    <option value="">Todas as colunas</option>
+                                    {editableColumns.map((c) => (
+                                        <option key={c.name} value={c.name}>
+                                            {c.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="submit"
+                                    disabled={busy}
+                                    className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                                >
+                                    Buscar
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    className="rounded border px-2 py-1 text-xs dark:border-gray-600"
+                                    onClick={() => {
+                                        setSearchQ('')
+                                        setSearchCol('')
+                                        openTable(selectedTable, 0, '', '')
+                                    }}
+                                >
+                                    Limpar
+                                </button>
+                            </form>
                             <div className="overflow-auto">
                                 <table className="min-w-full border-collapse text-left text-xs">
                                     <thead>

@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Sidecar: API :8080 + Next standalone :3000.
-# platform-hosting espera porta 80 no contentor — usamos um socat/proxy mínimo via API
-# enquanto o Traefik aponta para 80. Aqui publicamos FE na 80 via redirecionamento simples
-# com um loop: se existir `caddy` no futuro, trocar. MVP: FE em 3000 e API em 8080;
-# para drop-in, mapeamos FE para 80 com `npx serve` não — usamos node standalone em 80.
+# Sidecar: API :8080 + Next standalone :80 (Traefik/hosting aponta à 80).
 set -euo pipefail
 
 export BIND_ADDRESS="${BIND_ADDRESS:-0.0.0.0:8080}"
@@ -12,6 +8,9 @@ export PASSWORD="${PASSWORD:?PASSWORD é obrigatório}"
 export PORT="${PORT:-80}"
 export HOSTNAME="${HOSTNAME:-0.0.0.0}"
 export BUSINESS_API_INTERNAL_URL="${BUSINESS_API_INTERNAL_URL:-http://127.0.0.1:8080}"
+export AUTH_SECRET="${AUTH_SECRET:-octor-sqlite-admin-sidecar}"
+export AUTH_TRUST_HOST="${AUTH_TRUST_HOST:-true}"
+export NEXTAUTH_URL="${NEXTAUTH_URL:-http://127.0.0.1:${PORT}}"
 
 mkdir -p "$LOCATION"
 
@@ -19,7 +18,16 @@ web-sqlite-admin-api &
 API_PID=$!
 
 cd /app/web
-node server.js &
+# standalone Next: server.js na raiz do standalone
+if [[ -f server.js ]]; then
+  node server.js &
+elif [[ -f web-sqlite-admin/server.js ]]; then
+  cd web-sqlite-admin && node server.js &
+else
+  echo "server.js do Next standalone não encontrado em /app/web" >&2
+  kill "$API_PID" 2>/dev/null || true
+  exit 1
+fi
 WEB_PID=$!
 
 term() {

@@ -113,6 +113,22 @@ async fn main() -> Result<()> {
                         web::get().to(handlers::database::get_database),
                     )
                     .route(
+                        "/databases/{name}",
+                        web::patch().to(handlers::database::rename_database),
+                    )
+                    .route(
+                        "/databases/{name}",
+                        web::delete().to(handlers::database::delete_database),
+                    )
+                    .route(
+                        "/databases/{name}/vacuum",
+                        web::post().to(handlers::database::vacuum_database),
+                    )
+                    .route(
+                        "/databases/{name}/integrity",
+                        web::get().to(handlers::database::integrity_database),
+                    )
+                    .route(
                         "/databases/{name}/tables",
                         web::get().to(handlers::tables::list_tables),
                     )
