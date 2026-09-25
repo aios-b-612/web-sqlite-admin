@@ -1,16 +1,19 @@
 # web-sqlite-admin
 
-Admin SQLite da Octor — **Next.js** + **API Rust/Actix**. Substitui o **phpLiteAdmin** no sidecar do `platform-hosting`.
+Admin SQLite **open source** ([aios-b-612](https://github.com/aios-b-612)) — **Next.js** + **API Rust/Actix**.
+
+A [Octor](https://github.com/0ctor) consome este projecto como sidecar no `platform-hosting` (substitui o phpLiteAdmin). O canónico e a manutenção vivem nesta org AIOS.
 
 | Peça | Origem |
 |------|--------|
-| `frontend/` | [`0ctor/template-frontend`](https://github.com/0ctor/template-frontend) |
-| `api/` | [`0ctor/template-api-rust`](https://github.com/0ctor/template-api-rust) adaptada a SQLite |
-| Repo | [`0ctor/web-sqlite-admin`](https://github.com/0ctor/web-sqlite-admin) |
+| `frontend/` | template Next (Ecme) |
+| `api/` | Actix + rusqlite |
+| Repo | [`aios-b-612/web-sqlite-admin`](https://github.com/aios-b-612/web-sqlite-admin) |
+| Licença | [MIT](./LICENSE) |
 
 ## Contrato sidecar (compatível com hosting)
 
-O `platform-hosting` hoje sobe o phpLiteAdmin com:
+O hosting sobe o painel com:
 
 | Env | Valor típico |
 |-----|----------------|
@@ -44,7 +47,7 @@ Esta API aceita os **mesmos** nomes (`PASSWORD` / `LOCATION`). Aliases: `ADMIN_P
 | POST/DELETE | `/v1/databases/{name}/schema/indexes|views|triggers` | Bearer |
 | GET | `/health/live` · `/health/ready` | não |
 
-UI: login, bases (criar/renomear/apagar), tabelas, busca, CRUD, schema, import/export, VACUUM/integrity, console.
+UI: login por senha, shell Ecme sem SSO/AppMenu, bases, tabelas, busca, CRUD, schema, import/export, VACUUM/integrity, console SQL.
 
 ## Dev local
 
@@ -63,10 +66,9 @@ npm install && npm run dev
 ## Deploy
 
 - Dual GHCR: `web-sqlite-admin` (FE) + `web-sqlite-admin-api` (API) — compose de exemplo na raiz.
-- Sidecar hosting: imagem única (ver `Dockerfile.sidecar`) na porta 80; depois trocar `SQLITE_ADMIN_IMAGE` no `platform-hosting`.
+- Sidecar hosting: imagem única (`Dockerfile.sidecar`) na porta 80:
 
-## Próximos passos
-
-1. CRUD de linhas / import-export / schema DDL na UI
-2. Trocar imagem no `platform-hosting` (`octor-hosting-phpliteadmin` → esta)
-3. Catálogo Backstage + Statuspage quando for app PaaS próprio
+```bash
+docker build -f Dockerfile.sidecar -t ghcr.io/aios-b-612/web-sqlite-admin:sidecar .
+docker push ghcr.io/aios-b-612/web-sqlite-admin:sidecar
+```

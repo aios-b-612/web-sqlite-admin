@@ -3,7 +3,7 @@
 
 services:
   api:
-    image: ${IMAGE_API:-ghcr.io/0ctor/web-sqlite-admin-api:latest}
+    image: ${IMAGE_API:-ghcr.io/aios-b-612/web-sqlite-admin-api:latest}
     container_name: octor-web-sqlite-admin-api
     restart: unless-stopped
     environment:
@@ -26,7 +26,7 @@ services:
       start_period: 20s
 
   web:
-    image: ${IMAGE_WEB:-ghcr.io/0ctor/web-sqlite-admin:latest}
+    image: ${IMAGE_WEB:-ghcr.io/aios-b-612/web-sqlite-admin:latest}
     container_name: octor-web-sqlite-admin
     restart: unless-stopped
     environment:

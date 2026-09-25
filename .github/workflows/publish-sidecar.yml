@@ -1,6 +1,6 @@
 name: Publish sidecar image
 
-# Publica ghcr.io/0ctor/web-sqlite-admin:sidecar a partir de main.
+# Publica ghcr.io/aios-b-612/web-sqlite-admin:sidecar a partir de main.
 # Requer Actions com billing OK + permissão packages:write.
 
 on:
@@ -34,5 +34,5 @@ jobs:
           file: Dockerfile.sidecar
           push: true
           tags: |
-            ghcr.io/0ctor/web-sqlite-admin:sidecar
-            ghcr.io/0ctor/web-sqlite-admin:sidecar-${{ github.sha }}
+            ghcr.io/aios-b-612/web-sqlite-admin:sidecar
+            ghcr.io/aios-b-612/web-sqlite-admin:sidecar-${{ github.sha }}
