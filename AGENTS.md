@@ -1,16 +1,17 @@
 # AGENTS.md — `web-sqlite-admin`
 
-Admin SQLite Octor (substitui phpLiteAdmin no hosting). Org [`0ctor`](https://github.com/0ctor).
+Admin SQLite **open source** da org [`aios-b-612`](https://github.com/aios-b-612). A Octor ([`0ctor`](https://github.com/0ctor)) **consome** (sidecar no hosting); não é dona do produto.
 
 ## Este componente
 
 | Campo | Valor |
 |-------|--------|
-| Repo | `0ctor/web-sqlite-admin` |
+| Repo | `aios-b-612/web-sqlite-admin` |
 | Layout | Dual: `frontend/` (Next) + `api/` (Rust/Actix) |
-| Uso principal | Sidecar por base SQLite no `platform-hosting` |
+| Uso principal | Sidecar por base SQLite (ex.: `0ctor/platform-hosting`) |
 | Auth sidecar | `PASSWORD` → `POST /v1/auth/login` → Bearer |
 | Env legado | `PASSWORD` + `LOCATION` (iguais ao phpLiteAdmin) |
+| Licença | MIT |
 
 ## Padrões da org (obrigatórios)
 

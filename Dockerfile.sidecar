@@ -2,7 +2,7 @@
 #
 # Build:
 #   docker build -f Dockerfile.sidecar -t octor-hosting-sqlite-admin:octor-v1 .
-#   docker tag octor-hosting-sqlite-admin:octor-v1 ghcr.io/0ctor/web-sqlite-admin:sidecar
+#   docker tag octor-hosting-sqlite-admin:octor-v1 ghcr.io/aios-b-612/web-sqlite-admin:sidecar
 
 FROM rust:1.88-bookworm AS api-build
 WORKDIR /app
