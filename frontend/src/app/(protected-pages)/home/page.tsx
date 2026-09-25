@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import {
+    SQLITE_ADMIN_TOKEN_KEY,
+    notifySqliteAdminAuthChanged,
+} from '@/components/layouts/PanelShell'
+
 type DatabaseInfo = { name: string; size_bytes: number }
 type TableInfo = { name: string; kind: string; sql?: string | null }
 type ColumnInfo = {
@@ -19,7 +24,7 @@ type SchemaObject = {
     sql?: string | null
 }
 
-const TOKEN_KEY = 'octor_sqlite_admin_token'
+const TOKEN_KEY = SQLITE_ADMIN_TOKEN_KEY
 
 function apiBase(): string {
     if (typeof window === 'undefined') return ''
@@ -131,6 +136,7 @@ const Page = () => {
                 setError(e.message)
                 setToken(null)
                 window.localStorage.removeItem(TOKEN_KEY)
+                notifySqliteAdminAuthChanged()
             })
             .finally(() => setBusy(false))
     }, [token, loadDatabases])
@@ -151,6 +157,7 @@ const Page = () => {
             })
             window.localStorage.setItem(TOKEN_KEY, data.token)
             setToken(data.token)
+            notifySqliteAdminAuthChanged()
             setPassword('')
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Falha no login')
@@ -721,7 +728,7 @@ const Page = () => {
                     <button
                         type="submit"
                         disabled={busy}
-                        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                     >
                         {busy ? 'Entrando…' : 'Entrar'}
                     </button>
@@ -734,17 +741,7 @@ const Page = () => {
         <div className="flex min-h-[80vh] flex-col gap-4 p-4 lg:flex-row">
             <aside className="w-full shrink-0 space-y-4 lg:w-72">
                 <div className="flex items-center justify-between">
-                    <h1 className="text-lg font-semibold">SQLite Admin</h1>
-                    <button
-                        type="button"
-                        className="text-xs text-gray-500 underline"
-                        onClick={() => {
-                            window.localStorage.removeItem(TOKEN_KEY)
-                            setToken(null)
-                        }}
-                    >
-                        Sair
-                    </button>
+                    <h1 className="text-lg font-semibold">Bases SQLite</h1>
                 </div>
                 {error && (
                     <p className="text-sm text-red-600" role="alert">
@@ -766,7 +763,7 @@ const Page = () => {
                             type="button"
                             disabled={busy}
                             onClick={createDatabase}
-                            className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                            className="rounded bg-primary px-2 py-1 text-xs text-white"
                         >
                             +
                         </button>
@@ -779,7 +776,7 @@ const Page = () => {
                                     onClick={() => openDb(db.name)}
                                     className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${
                                         selectedDb === db.name
-                                            ? 'bg-emerald-100 dark:bg-emerald-900/40'
+                                            ? 'bg-primary-subtle dark:bg-primary/20'
                                             : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                                     }`}
                                 >
@@ -880,7 +877,7 @@ const Page = () => {
                                 type="button"
                                 disabled={busy}
                                 onClick={runImport}
-                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                                className="rounded bg-primary px-2 py-1 text-xs text-white"
                             >
                                 Importar
                             </button>
@@ -935,7 +932,7 @@ const Page = () => {
                                 type="button"
                                 disabled={busy}
                                 onClick={createTable}
-                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                                className="rounded bg-primary px-2 py-1 text-xs text-white"
                             >
                                 Criar
                             </button>
@@ -955,7 +952,7 @@ const Page = () => {
                                             onClick={() => openTable(t.name)}
                                             className={`min-w-0 flex-1 truncate rounded-md px-2 py-1 text-left text-sm ${
                                                 selectedTable === t.name
-                                                    ? 'bg-emerald-100 dark:bg-emerald-900/40'
+                                                    ? 'bg-primary-subtle dark:bg-primary/20'
                                                     : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                                             }`}
                                         >
@@ -992,7 +989,7 @@ const Page = () => {
                             type="button"
                             disabled={busy}
                             onClick={runSql}
-                            className="mt-2 rounded-md bg-emerald-600 px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                            className="mt-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white disabled:opacity-60"
                         >
                             Executar
                         </button>
@@ -1038,7 +1035,7 @@ const Page = () => {
                                 type="button"
                                 disabled={busy || !selectedTable}
                                 onClick={createIndex}
-                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+                                className="rounded bg-primary px-2 py-1 text-xs text-white disabled:opacity-50"
                             >
                                 Criar índice
                             </button>
@@ -1060,7 +1057,7 @@ const Page = () => {
                                 type="button"
                                 disabled={busy}
                                 onClick={createView}
-                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                                className="rounded bg-primary px-2 py-1 text-xs text-white"
                             >
                                 Criar view
                             </button>
@@ -1077,7 +1074,7 @@ const Page = () => {
                                 type="button"
                                 disabled={busy}
                                 onClick={createTrigger}
-                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                                className="rounded bg-primary px-2 py-1 text-xs text-white"
                             >
                                 Criar trigger
                             </button>
@@ -1121,7 +1118,7 @@ const Page = () => {
                                         type="button"
                                         disabled={busy}
                                         onClick={insertRow}
-                                        className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white"
+                                        className="rounded bg-primary px-3 py-1.5 text-sm text-white"
                                     >
                                         Inserir
                                     </button>
@@ -1131,7 +1128,7 @@ const Page = () => {
                                             type="button"
                                             disabled={busy}
                                             onClick={saveEdit}
-                                            className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white"
+                                            className="rounded bg-primary px-3 py-1.5 text-sm text-white"
                                         >
                                             Guardar
                                         </button>
@@ -1247,7 +1244,7 @@ const Page = () => {
                                 <button
                                     type="submit"
                                     disabled={busy}
-                                    className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                                    className="rounded bg-primary px-2 py-1 text-xs text-white"
                                 >
                                     Buscar
                                 </button>
@@ -1290,7 +1287,7 @@ const Page = () => {
                                                     <td className="whitespace-nowrap px-2 py-1">
                                                         <button
                                                             type="button"
-                                                            className="mr-2 text-emerald-700 underline"
+                                                            className="mr-2 text-primary underline"
                                                             onClick={() =>
                                                                 startEdit(row)
                                                             }

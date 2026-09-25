@@ -16,6 +16,19 @@ const useCurrentSession = () => {
     }
   }
 
+  if (appConfig.panelPasswordAuth) {
+    return {
+      session: {
+        user: {
+          name: 'SQLite Admin',
+          email: 'Painel por senha',
+          image: undefined,
+          authority: [] as string[],
+        },
+      },
+    }
+  }
+
   return {
     session: nextAuthSession,
   }

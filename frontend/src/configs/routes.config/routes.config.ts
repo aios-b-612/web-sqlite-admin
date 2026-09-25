@@ -7,7 +7,7 @@ export const protectedRoutes: Routes = {
         authority: [],
         meta: {
             pageBackgroundType: 'plain',
-            pageContainerType: 'contained',
+            pageContainerType: 'gutterless',
         },
     },
 }
