@@ -25,6 +25,41 @@ pub struct AddColumnBody {
     pub column: db::ColumnDef,
 }
 
+#[derive(Deserialize)]
+pub struct ImportBody {
+    pub sql: String,
+}
+
+#[derive(Deserialize)]
+pub struct ObjectsQuery {
+    pub kind: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateIndexBody {
+    pub name: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    #[serde(default)]
+    pub unique: bool,
+}
+
+#[derive(Deserialize)]
+pub struct DropNamedBody {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateViewBody {
+    pub name: String,
+    pub select_sql: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateTriggerBody {
+    pub sql: String,
+}
+
 pub async fn create_table(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -86,6 +121,108 @@ pub async fn export_sql(
             format!("attachment; filename=\"{}\"", dump_filename(&path.name)),
         ))
         .body(sql))
+}
+
+pub async fn import_sql(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    body: web::Json<ImportBody>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    let result = db::import_sql(&conn, &body.sql)?;
+    Ok(HttpResponse::Ok().json(json!({
+        "status": true,
+        "result": result,
+    })))
+}
+
+pub async fn list_objects(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    query: web::Query<ObjectsQuery>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    let objects = db::list_schema_objects(&conn, query.kind.as_deref())?;
+    Ok(HttpResponse::Ok().json(json!({
+        "status": true,
+        "objects": objects,
+    })))
+}
+
+pub async fn create_index(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    body: web::Json<CreateIndexBody>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    db::create_index(&conn, &body.name, &body.table, &body.columns, body.unique)?;
+    Ok(HttpResponse::Created().json(json!({ "status": true })))
+}
+
+pub async fn drop_index(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    body: web::Json<DropNamedBody>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    db::drop_index(&conn, &body.name)?;
+    Ok(HttpResponse::Ok().json(json!({ "status": true })))
+}
+
+pub async fn create_view(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    body: web::Json<CreateViewBody>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    db::create_view(&conn, &body.name, &body.select_sql)?;
+    Ok(HttpResponse::Created().json(json!({ "status": true })))
+}
+
+pub async fn drop_view(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    body: web::Json<DropNamedBody>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    db::drop_view(&conn, &body.name)?;
+    Ok(HttpResponse::Ok().json(json!({ "status": true })))
+}
+
+pub async fn create_trigger(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    body: web::Json<CreateTriggerBody>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    db::create_trigger(&conn, &body.sql)?;
+    Ok(HttpResponse::Created().json(json!({ "status": true })))
+}
+
+pub async fn drop_trigger(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<DbPath>,
+    body: web::Json<DropNamedBody>,
+) -> Result<HttpResponse, ApiError> {
+    state.auth.authenticate(&req).await?;
+    let conn = state.store.open(&path.name)?;
+    db::drop_trigger(&conn, &body.name)?;
+    Ok(HttpResponse::Ok().json(json!({ "status": true })))
 }
 
 fn dump_filename(name: &str) -> String {

@@ -153,6 +153,38 @@ async fn main() -> Result<()> {
                         web::get().to(handlers::schema::export_sql),
                     )
                     .route(
+                        "/databases/{name}/import",
+                        web::post().to(handlers::schema::import_sql),
+                    )
+                    .route(
+                        "/databases/{name}/objects",
+                        web::get().to(handlers::schema::list_objects),
+                    )
+                    .route(
+                        "/databases/{name}/schema/indexes",
+                        web::post().to(handlers::schema::create_index),
+                    )
+                    .route(
+                        "/databases/{name}/schema/indexes",
+                        web::delete().to(handlers::schema::drop_index),
+                    )
+                    .route(
+                        "/databases/{name}/schema/views",
+                        web::post().to(handlers::schema::create_view),
+                    )
+                    .route(
+                        "/databases/{name}/schema/views",
+                        web::delete().to(handlers::schema::drop_view),
+                    )
+                    .route(
+                        "/databases/{name}/schema/triggers",
+                        web::post().to(handlers::schema::create_trigger),
+                    )
+                    .route(
+                        "/databases/{name}/schema/triggers",
+                        web::delete().to(handlers::schema::drop_trigger),
+                    )
+                    .route(
                         "/databases/{name}/sql",
                         web::post().to(handlers::sql::run_sql),
                     ),
