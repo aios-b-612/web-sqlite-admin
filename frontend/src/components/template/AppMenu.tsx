@@ -10,6 +10,7 @@ import { renderAppMenuPiIcon } from './appMenuPiIcons'
 import { buildAppMenuHandoffUrl } from '@/auth/appMenuHandoff'
 import { filterAppMenuItemsByQuery } from './filterAppMenuItemsByQuery'
 import { useOctorAuthStore } from '@/store/octorAuthStore'
+import appConfig from '@/configs/app.config'
 import type { AccountAppItem } from '@/auth/account'
 
 /** A partir de 4 linhas no grid 3 colunas, busca + scroll evitam o menu sair da tela. */
@@ -30,6 +31,11 @@ const _AppMenu = () => {
   const token = useOctorAuthStore((s) => s.token)
   const accountLoaded = useOctorAuthStore((s) => s.accountLoaded)
   const [query, setQuery] = useState('')
+
+  // Sidecar hosting: sem SSO / sem AppMenu (pedido de produto).
+  if (appConfig.panelPasswordAuth || !appConfig.centralAuthEnabled) {
+    return null
+  }
 
   const visibleItems = useMemo(() => {
     if (!accountLoaded) return null

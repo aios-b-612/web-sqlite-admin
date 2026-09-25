@@ -10,6 +10,10 @@ import { redirectToCentralAuthLogout } from '@/auth/centralAuth'
 import { clearOctorAuthSession } from '@/store/octorAuthStore'
 import useCurrentSession from '@/utils/hooks/useCurrentSession'
 import { PiUserDuotone, PiSignOutDuotone } from 'react-icons/pi'
+import {
+    SQLITE_ADMIN_TOKEN_KEY,
+    notifySqliteAdminAuthChanged,
+} from '@/components/layouts/PanelShell'
 
 import type { JSX } from 'react'
 
@@ -25,6 +29,12 @@ const _UserDropdown = () => {
     const { session } = useCurrentSession()
 
     const handleSignOut = async () => {
+        if (appConfig.panelPasswordAuth) {
+            window.localStorage.removeItem(SQLITE_ADMIN_TOKEN_KEY)
+            notifySqliteAdminAuthChanged()
+            window.location.assign('/home')
+            return
+        }
         if (appConfig.centralAuthEnabled) {
             clearOctorAuthSession()
             redirectToCentralAuthLogout(appConfig.authPortalOrigin)
