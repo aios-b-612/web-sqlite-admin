@@ -12,6 +12,12 @@ type ColumnInfo = {
     default_value?: string | null
     pk: boolean
 }
+type SchemaObject = {
+    name: string
+    kind: string
+    tbl_name?: string | null
+    sql?: string | null
+}
 
 const TOKEN_KEY = 'octor_sqlite_admin_token'
 
@@ -88,6 +94,14 @@ const Page = () => {
     const [newTableCols, setNewTableCols] = useState('id INTEGER PRIMARY KEY, name TEXT')
     const [newColName, setNewColName] = useState('')
     const [newColType, setNewColType] = useState('TEXT')
+    const [objects, setObjects] = useState<SchemaObject[]>([])
+    const [importSqlText, setImportSqlText] = useState('')
+    const [idxName, setIdxName] = useState('')
+    const [idxCols, setIdxCols] = useState('')
+    const [idxUnique, setIdxUnique] = useState(false)
+    const [viewName, setViewName] = useState('')
+    const [viewSql, setViewSql] = useState('SELECT 1 AS x')
+    const [triggerSql, setTriggerSql] = useState('')
 
     const limit = 50
 
@@ -150,11 +164,18 @@ const Page = () => {
         setColumns([])
         setEditingRowid(null)
         try {
-            const data = await api<{ tables: TableInfo[] }>(
-                `/v1/databases/${encodeURIComponent(name)}/tables`,
-                { token },
-            )
-            setTables(data.tables)
+            const [tablesData, objectsData] = await Promise.all([
+                api<{ tables: TableInfo[] }>(
+                    `/v1/databases/${encodeURIComponent(name)}/tables`,
+                    { token },
+                ),
+                api<{ objects: SchemaObject[] }>(
+                    `/v1/databases/${encodeURIComponent(name)}/objects`,
+                    { token },
+                ),
+            ])
+            setTables(tablesData.tables)
+            setObjects(objectsData.objects)
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Erro ao abrir base')
         } finally {
@@ -426,6 +447,137 @@ const Page = () => {
         }
     }
 
+    const runImport = async () => {
+        if (!token || !selectedDb || !importSqlText.trim()) return
+        setBusy(true)
+        setError(null)
+        try {
+            await api(
+                `/v1/databases/${encodeURIComponent(selectedDb)}/import`,
+                {
+                    method: 'POST',
+                    token,
+                    body: JSON.stringify({ sql: importSqlText }),
+                },
+            )
+            setImportSqlText('')
+            await openDb(selectedDb)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro no import')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const createIndex = async () => {
+        if (!token || !selectedDb || !selectedTable || !idxName.trim()) return
+        const columns = idxCols
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean)
+        setBusy(true)
+        setError(null)
+        try {
+            await api(
+                `/v1/databases/${encodeURIComponent(selectedDb)}/schema/indexes`,
+                {
+                    method: 'POST',
+                    token,
+                    body: JSON.stringify({
+                        name: idxName.trim(),
+                        table: selectedTable,
+                        columns,
+                        unique: idxUnique,
+                    }),
+                },
+            )
+            setIdxName('')
+            setIdxCols('')
+            await openDb(selectedDb)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro ao criar índice')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const dropObject = async (kind: string, name: string) => {
+        if (!token || !selectedDb) return
+        if (!window.confirm(`DROP ${kind} "${name}"?`)) return
+        const path =
+            kind === 'index'
+                ? 'indexes'
+                : kind === 'view'
+                  ? 'views'
+                  : 'triggers'
+        setBusy(true)
+        setError(null)
+        try {
+            await api(
+                `/v1/databases/${encodeURIComponent(selectedDb)}/schema/${path}`,
+                {
+                    method: 'DELETE',
+                    token,
+                    body: JSON.stringify({ name }),
+                },
+            )
+            await openDb(selectedDb)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro ao dropar')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const createView = async () => {
+        if (!token || !selectedDb || !viewName.trim()) return
+        setBusy(true)
+        setError(null)
+        try {
+            await api(
+                `/v1/databases/${encodeURIComponent(selectedDb)}/schema/views`,
+                {
+                    method: 'POST',
+                    token,
+                    body: JSON.stringify({
+                        name: viewName.trim(),
+                        select_sql: viewSql,
+                    }),
+                },
+            )
+            setViewName('')
+            await openDb(selectedDb)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro ao criar view')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const createTrigger = async () => {
+        if (!token || !selectedDb || !triggerSql.trim()) return
+        setBusy(true)
+        setError(null)
+        try {
+            await api(
+                `/v1/databases/${encodeURIComponent(selectedDb)}/schema/triggers`,
+                {
+                    method: 'POST',
+                    token,
+                    body: JSON.stringify({ sql: triggerSql }),
+                },
+            )
+            setTriggerSql('')
+            await openDb(selectedDb)
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : 'Erro ao criar trigger',
+            )
+        } finally {
+            setBusy(false)
+        }
+    }
+
     const columnNames = useMemo(() => {
         if (rows[0]) return Object.keys(rows[0])
         return columns.map((c) => c.name)
@@ -529,6 +681,71 @@ const Page = () => {
                         </button>
                         <section className="space-y-2 rounded-md border border-gray-200 p-2 dark:border-gray-700">
                             <h2 className="text-xs font-semibold uppercase text-gray-500">
+                                Importar SQL
+                            </h2>
+                            <textarea
+                                className="h-20 w-full rounded border px-2 py-1 font-mono text-xs dark:border-gray-600 dark:bg-gray-900"
+                                placeholder="CREATE TABLE …; INSERT …;"
+                                value={importSqlText}
+                                onChange={(e) =>
+                                    setImportSqlText(e.target.value)
+                                }
+                            />
+                            <label className="block text-xs text-gray-500">
+                                Ou ficheiro
+                                <input
+                                    type="file"
+                                    accept=".sql,text/plain"
+                                    className="mt-1 block w-full text-xs"
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0]
+                                        if (!file) return
+                                        setImportSqlText(await file.text())
+                                    }}
+                                />
+                            </label>
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={runImport}
+                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                            >
+                                Importar
+                            </button>
+                        </section>
+                        {objects.length > 0 && (
+                            <section>
+                                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    Índices / views / triggers
+                                </h2>
+                                <ul className="max-h-40 space-y-1 overflow-auto text-xs">
+                                    {objects.map((o) => (
+                                        <li
+                                            key={`${o.kind}:${o.name}`}
+                                            className="flex items-center gap-1"
+                                        >
+                                            <span className="min-w-0 flex-1 truncate">
+                                                <span className="text-gray-400">
+                                                    {o.kind}
+                                                </span>{' '}
+                                                {o.name}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                className="text-red-500"
+                                                onClick={() =>
+                                                    dropObject(o.kind, o.name)
+                                                }
+                                            >
+                                                ×
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
+                        <section className="space-y-2 rounded-md border border-gray-200 p-2 dark:border-gray-700">
+                            <h2 className="text-xs font-semibold uppercase text-gray-500">
                                 Nova tabela
                             </h2>
                             <input
@@ -612,6 +829,87 @@ const Page = () => {
                                 {sqlResult}
                             </pre>
                         )}
+                    </section>
+                )}
+
+                {selectedDb && (
+                    <section className="grid gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700 lg:grid-cols-3">
+                        <div className="space-y-2">
+                            <h2 className="text-sm font-semibold">Índice</h2>
+                            <p className="text-xs text-gray-500">
+                                Usa a tabela selecionada:{' '}
+                                {selectedTable || '(escolha à esquerda)'}
+                            </p>
+                            <input
+                                className="w-full rounded border px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-900"
+                                placeholder="nome do índice"
+                                value={idxName}
+                                onChange={(e) => setIdxName(e.target.value)}
+                            />
+                            <input
+                                className="w-full rounded border px-2 py-1 font-mono text-xs dark:border-gray-600 dark:bg-gray-900"
+                                placeholder="col1, col2"
+                                value={idxCols}
+                                onChange={(e) => setIdxCols(e.target.value)}
+                            />
+                            <label className="flex items-center gap-2 text-xs">
+                                <input
+                                    type="checkbox"
+                                    checked={idxUnique}
+                                    onChange={(e) =>
+                                        setIdxUnique(e.target.checked)
+                                    }
+                                />
+                                UNIQUE
+                            </label>
+                            <button
+                                type="button"
+                                disabled={busy || !selectedTable}
+                                onClick={createIndex}
+                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+                            >
+                                Criar índice
+                            </button>
+                        </div>
+                        <div className="space-y-2">
+                            <h2 className="text-sm font-semibold">View</h2>
+                            <input
+                                className="w-full rounded border px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-900"
+                                placeholder="nome"
+                                value={viewName}
+                                onChange={(e) => setViewName(e.target.value)}
+                            />
+                            <textarea
+                                className="h-20 w-full rounded border px-2 py-1 font-mono text-xs dark:border-gray-600 dark:bg-gray-900"
+                                value={viewSql}
+                                onChange={(e) => setViewSql(e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={createView}
+                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                            >
+                                Criar view
+                            </button>
+                        </div>
+                        <div className="space-y-2">
+                            <h2 className="text-sm font-semibold">Trigger</h2>
+                            <textarea
+                                className="h-28 w-full rounded border px-2 py-1 font-mono text-xs dark:border-gray-600 dark:bg-gray-900"
+                                placeholder="CREATE TRIGGER …"
+                                value={triggerSql}
+                                onChange={(e) => setTriggerSql(e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={createTrigger}
+                                className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                            >
+                                Criar trigger
+                            </button>
+                        </div>
                     </section>
                 )}
 

@@ -595,6 +595,183 @@ fn sql_literal(value: ValueRef<'_>) -> String {
     }
 }
 
+const MAX_IMPORT_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Debug, serde::Serialize)]
+pub struct ImportResult {
+    pub statements_ok: bool,
+    pub bytes: usize,
+}
+
+/// Executa um dump SQL (várias statements). Limite 8 MiB.
+pub fn import_sql(conn: &Connection, sql: &str) -> Result<ImportResult, ApiError> {
+    let trimmed = sql.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::BadRequest("SQL de import vazio".into()));
+    }
+    if trimmed.len() > MAX_IMPORT_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "import demasiado grande (máx. {MAX_IMPORT_BYTES} bytes)"
+        )));
+    }
+    conn.execute_batch(trimmed).map_err(map_sqlite)?;
+    Ok(ImportResult {
+        statements_ok: true,
+        bytes: trimmed.len(),
+    })
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SchemaObject {
+    pub name: String,
+    pub kind: String,
+    pub tbl_name: Option<String>,
+    pub sql: Option<String>,
+}
+
+pub fn list_schema_objects(
+    conn: &Connection,
+    kind: Option<&str>,
+) -> Result<Vec<SchemaObject>, ApiError> {
+    let allowed = ["index", "view", "trigger"];
+    if let Some(k) = kind {
+        if !allowed.contains(&k) {
+            return Err(ApiError::BadRequest(format!(
+                "kind inválido (use: {})",
+                allowed.join(", ")
+            )));
+        }
+    }
+
+    let mut out = Vec::new();
+    if let Some(k) = kind {
+        let mut stmt = conn
+            .prepare(
+                "SELECT name, type, tbl_name, sql FROM sqlite_master \
+                 WHERE type = ?1 AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            )
+            .map_err(map_sqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params![k], |row| {
+                Ok(SchemaObject {
+                    name: row.get(0)?,
+                    kind: row.get(1)?,
+                    tbl_name: row.get(2)?,
+                    sql: row.get(3)?,
+                })
+            })
+            .map_err(map_sqlite)?;
+        for row in rows {
+            out.push(row.map_err(map_sqlite)?);
+        }
+    } else {
+        let mut stmt = conn
+            .prepare(
+                "SELECT name, type, tbl_name, sql FROM sqlite_master \
+                 WHERE type IN ('index','view','trigger') AND name NOT LIKE 'sqlite_%' \
+                 ORDER BY type, name",
+            )
+            .map_err(map_sqlite)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(SchemaObject {
+                    name: row.get(0)?,
+                    kind: row.get(1)?,
+                    tbl_name: row.get(2)?,
+                    sql: row.get(3)?,
+                })
+            })
+            .map_err(map_sqlite)?;
+        for row in rows {
+            out.push(row.map_err(map_sqlite)?);
+        }
+    }
+    Ok(out)
+}
+
+pub fn create_index(
+    conn: &Connection,
+    name: &str,
+    table: &str,
+    columns: &[String],
+    unique: bool,
+) -> Result<(), ApiError> {
+    validate_ident(name)?;
+    validate_ident(table)?;
+    if columns.is_empty() {
+        return Err(ApiError::BadRequest("colunas do índice vazias".into()));
+    }
+    for col in columns {
+        validate_ident(col)?;
+    }
+    let uniq = if unique { "UNIQUE " } else { "" };
+    let cols = columns
+        .iter()
+        .map(|c| format!("\"{c}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!("CREATE {uniq}INDEX \"{name}\" ON \"{table}\" ({cols})");
+    conn.execute(&sql, []).map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn drop_index(conn: &Connection, name: &str) -> Result<(), ApiError> {
+    validate_ident(name)?;
+    conn.execute(&format!("DROP INDEX IF EXISTS \"{name}\""), [])
+        .map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn create_view(conn: &Connection, name: &str, select_sql: &str) -> Result<(), ApiError> {
+    validate_ident(name)?;
+    let select = select_sql.trim();
+    if select.is_empty() {
+        return Err(ApiError::BadRequest("SQL da view vazio".into()));
+    }
+    let first = select
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if first != "select" && first != "with" {
+        return Err(ApiError::BadRequest(
+            "view deve começar com SELECT ou WITH".into(),
+        ));
+    }
+    let sql = format!("CREATE VIEW \"{name}\" AS {select}");
+    conn.execute(&sql, []).map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn drop_view(conn: &Connection, name: &str) -> Result<(), ApiError> {
+    validate_ident(name)?;
+    conn.execute(&format!("DROP VIEW IF EXISTS \"{name}\""), [])
+        .map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn create_trigger(conn: &Connection, create_sql: &str) -> Result<(), ApiError> {
+    let trimmed = create_sql.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::BadRequest("SQL do trigger vazio".into()));
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("create trigger") && !lower.starts_with("create temporary trigger") {
+        return Err(ApiError::BadRequest(
+            "use um statement CREATE TRIGGER completo".into(),
+        ));
+    }
+    conn.execute(trimmed, []).map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn drop_trigger(conn: &Connection, name: &str) -> Result<(), ApiError> {
+    validate_ident(name)?;
+    conn.execute(&format!("DROP TRIGGER IF EXISTS \"{name}\""), [])
+        .map_err(map_sqlite)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod crud_tests {
     use super::*;
@@ -638,5 +815,26 @@ mod crud_tests {
         assert_eq!(browse_rows(&conn, "items", 10, 0).unwrap().total, 0);
         let dump = export_sql(&conn).unwrap();
         assert!(dump.contains("CREATE TABLE"));
+    }
+
+    #[test]
+    fn import_index_view_roundtrip() {
+        let conn = Connection::open_in_memory().unwrap();
+        import_sql(
+            &conn,
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);\n\
+             INSERT INTO t (name) VALUES ('x');\n",
+        )
+        .unwrap();
+        create_index(&conn, "idx_t_name", "t", &["name".into()], false).unwrap();
+        create_view(&conn, "v_t", "SELECT id, name FROM t").unwrap();
+        let objs = list_schema_objects(&conn, None).unwrap();
+        assert!(objs
+            .iter()
+            .any(|o| o.kind == "index" && o.name == "idx_t_name"));
+        assert!(objs.iter().any(|o| o.kind == "view" && o.name == "v_t"));
+        drop_index(&conn, "idx_t_name").unwrap();
+        drop_view(&conn, "v_t").unwrap();
+        assert!(list_schema_objects(&conn, None).unwrap().is_empty());
     }
 }
