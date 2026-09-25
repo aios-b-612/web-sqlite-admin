@@ -372,3 +372,271 @@ fn normalize_path(path: &Path) -> PathBuf {
 fn map_sqlite(err: rusqlite::Error) -> ApiError {
     ApiError::BadRequest(err.to_string())
 }
+
+fn json_to_sql_param(value: &Value) -> Result<rusqlite::types::Value, ApiError> {
+    match value {
+        Value::Null => Ok(rusqlite::types::Value::Null),
+        Value::Bool(b) => Ok(rusqlite::types::Value::Integer(i64::from(*b))),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(rusqlite::types::Value::Integer(i))
+            } else if let Some(f) = n.as_f64() {
+                Ok(rusqlite::types::Value::Real(f))
+            } else {
+                Err(ApiError::BadRequest("número inválido".into()))
+            }
+        }
+        Value::String(s) => Ok(rusqlite::types::Value::Text(s.clone())),
+        Value::Array(_) | Value::Object(_) => Ok(rusqlite::types::Value::Text(value.to_string())),
+    }
+}
+
+pub fn insert_row(
+    conn: &Connection,
+    table: &str,
+    values: &Map<String, Value>,
+) -> Result<i64, ApiError> {
+    validate_ident(table)?;
+    if values.is_empty() {
+        return Err(ApiError::BadRequest("values vazio".into()));
+    }
+    let mut cols = Vec::new();
+    let mut placeholders = Vec::new();
+    let mut params: Vec<rusqlite::types::Value> = Vec::new();
+    for (col, val) in values {
+        validate_ident(col)?;
+        cols.push(format!("\"{col}\""));
+        placeholders.push("?");
+        params.push(json_to_sql_param(val)?);
+    }
+    let sql = format!(
+        "INSERT INTO \"{table}\" ({}) VALUES ({})",
+        cols.join(", "),
+        placeholders.join(", ")
+    );
+    conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
+        .map_err(map_sqlite)?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn update_row(
+    conn: &Connection,
+    table: &str,
+    rowid: i64,
+    values: &Map<String, Value>,
+) -> Result<i64, ApiError> {
+    validate_ident(table)?;
+    if values.is_empty() {
+        return Err(ApiError::BadRequest("values vazio".into()));
+    }
+    let mut sets = Vec::new();
+    let mut params: Vec<rusqlite::types::Value> = Vec::new();
+    for (col, val) in values {
+        if col == "__rowid__" || col.eq_ignore_ascii_case("rowid") {
+            continue;
+        }
+        validate_ident(col)?;
+        sets.push(format!("\"{col}\" = ?"));
+        params.push(json_to_sql_param(val)?);
+    }
+    if sets.is_empty() {
+        return Err(ApiError::BadRequest("nenhuma coluna para atualizar".into()));
+    }
+    params.push(rusqlite::types::Value::Integer(rowid));
+    let sql = format!("UPDATE \"{table}\" SET {} WHERE rowid = ?", sets.join(", "));
+    let changes = conn
+        .execute(&sql, rusqlite::params_from_iter(params.iter()))
+        .map_err(map_sqlite)?;
+    Ok(changes as i64)
+}
+
+pub fn delete_row(conn: &Connection, table: &str, rowid: i64) -> Result<i64, ApiError> {
+    validate_ident(table)?;
+    let changes = conn
+        .execute(
+            &format!("DELETE FROM \"{table}\" WHERE rowid = ?"),
+            rusqlite::params![rowid],
+        )
+        .map_err(map_sqlite)?;
+    Ok(changes as i64)
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ColumnDef {
+    pub name: String,
+    #[serde(default = "default_col_type")]
+    pub decl_type: String,
+    #[serde(default)]
+    pub primary_key: bool,
+    #[serde(default)]
+    pub notnull: bool,
+    #[serde(default)]
+    pub unique: bool,
+}
+
+fn default_col_type() -> String {
+    "TEXT".into()
+}
+
+pub fn create_table(conn: &Connection, name: &str, columns: &[ColumnDef]) -> Result<(), ApiError> {
+    validate_ident(name)?;
+    if columns.is_empty() {
+        return Err(ApiError::BadRequest("defina ao menos uma coluna".into()));
+    }
+    let mut parts = Vec::new();
+    for col in columns {
+        validate_ident(&col.name)?;
+        let mut part = format!("\"{}\" {}", col.name, col.decl_type.trim());
+        if col.primary_key {
+            part.push_str(" PRIMARY KEY");
+        }
+        if col.notnull {
+            part.push_str(" NOT NULL");
+        }
+        if col.unique {
+            part.push_str(" UNIQUE");
+        }
+        parts.push(part);
+    }
+    let sql = format!("CREATE TABLE \"{name}\" ({})", parts.join(", "));
+    conn.execute(&sql, []).map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn drop_table(conn: &Connection, name: &str) -> Result<(), ApiError> {
+    validate_ident(name)?;
+    conn.execute(&format!("DROP TABLE IF EXISTS \"{name}\""), [])
+        .map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn add_column(conn: &Connection, table: &str, column: &ColumnDef) -> Result<(), ApiError> {
+    validate_ident(table)?;
+    validate_ident(&column.name)?;
+    let mut sql = format!(
+        "ALTER TABLE \"{table}\" ADD COLUMN \"{}\" {}",
+        column.name,
+        column.decl_type.trim()
+    );
+    if column.notnull {
+        sql.push_str(" NOT NULL");
+    }
+    conn.execute(&sql, []).map_err(map_sqlite)?;
+    Ok(())
+}
+
+pub fn export_sql(conn: &Connection) -> Result<String, ApiError> {
+    let mut out = String::from("-- Octor web-sqlite-admin dump\nBEGIN TRANSACTION;\n");
+    let mut stmt = conn
+        .prepare(
+            "SELECT type, name, sql FROM sqlite_master \
+             WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
+             ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 ELSE 2 END, name",
+        )
+        .map_err(map_sqlite)?;
+    let schema_rows: Vec<(String, String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(map_sqlite)?
+        .collect::<Result<_, _>>()
+        .map_err(map_sqlite)?;
+
+    for (kind, name, sql) in &schema_rows {
+        out.push_str(sql);
+        out.push_str(";\n");
+        if kind != "table" {
+            continue;
+        }
+        validate_ident(name)?;
+        let mut data = conn
+            .prepare(&format!("SELECT * FROM \"{name}\""))
+            .map_err(map_sqlite)?;
+        let col_count = data.column_count();
+        let col_names: Vec<String> = (0..col_count)
+            .map(|i| data.column_name(i).unwrap_or("?").to_string())
+            .collect();
+        let mut rows = data.query([]).map_err(map_sqlite)?;
+        while let Some(row) = rows.next().map_err(map_sqlite)? {
+            let mut vals = Vec::new();
+            for i in 0..col_count {
+                vals.push(sql_literal(row.get_ref(i).map_err(map_sqlite)?));
+            }
+            out.push_str(&format!(
+                "INSERT INTO \"{name}\" ({}) VALUES ({});\n",
+                col_names
+                    .iter()
+                    .map(|c| format!("\"{c}\""))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                vals.join(", ")
+            ));
+        }
+    }
+    out.push_str("COMMIT;\n");
+    Ok(out)
+}
+
+fn sql_literal(value: ValueRef<'_>) -> String {
+    match value {
+        ValueRef::Null => "NULL".into(),
+        ValueRef::Integer(v) => v.to_string(),
+        ValueRef::Real(v) => {
+            let s = v.to_string();
+            if s.contains('e') || s.contains('E') || s.contains('.') {
+                s
+            } else {
+                format!("{s}.0")
+            }
+        }
+        ValueRef::Text(v) => {
+            let text = String::from_utf8_lossy(v);
+            format!("'{}'", text.replace('\'', "''"))
+        }
+        ValueRef::Blob(v) => format!("X'{}'", hex::encode(v)),
+    }
+}
+
+#[cfg(test)]
+mod crud_tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    #[test]
+    fn insert_update_delete_roundtrip() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_table(
+            &conn,
+            "items",
+            &[
+                ColumnDef {
+                    name: "id".into(),
+                    decl_type: "INTEGER".into(),
+                    primary_key: true,
+                    notnull: false,
+                    unique: false,
+                },
+                ColumnDef {
+                    name: "name".into(),
+                    decl_type: "TEXT".into(),
+                    primary_key: false,
+                    notnull: true,
+                    unique: false,
+                },
+            ],
+        )
+        .unwrap();
+        let mut values = Map::new();
+        values.insert("name".into(), json!("alfa"));
+        let rowid = insert_row(&conn, "items", &values).unwrap();
+        assert!(rowid > 0);
+        let mut patch = Map::new();
+        patch.insert("name".into(), json!("beta"));
+        assert_eq!(update_row(&conn, "items", rowid, &patch).unwrap(), 1);
+        let browse = browse_rows(&conn, "items", 10, 0).unwrap();
+        assert_eq!(browse.total, 1);
+        assert_eq!(browse.rows[0]["name"], json!("beta"));
+        assert_eq!(delete_row(&conn, "items", rowid).unwrap(), 1);
+        assert_eq!(browse_rows(&conn, "items", 10, 0).unwrap().total, 0);
+        let dump = export_sql(&conn).unwrap();
+        assert!(dump.contains("CREATE TABLE"));
+    }
+}

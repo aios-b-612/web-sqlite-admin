@@ -125,6 +125,34 @@ async fn main() -> Result<()> {
                         web::get().to(handlers::tables::browse_rows),
                     )
                     .route(
+                        "/databases/{name}/tables/{table}/rows",
+                        web::post().to(handlers::rows::insert_row),
+                    )
+                    .route(
+                        "/databases/{name}/tables/{table}/rows",
+                        web::patch().to(handlers::rows::update_row),
+                    )
+                    .route(
+                        "/databases/{name}/tables/{table}/rows",
+                        web::delete().to(handlers::rows::delete_row),
+                    )
+                    .route(
+                        "/databases/{name}/schema/tables",
+                        web::post().to(handlers::schema::create_table),
+                    )
+                    .route(
+                        "/databases/{name}/schema/tables",
+                        web::delete().to(handlers::schema::drop_table),
+                    )
+                    .route(
+                        "/databases/{name}/schema/columns",
+                        web::post().to(handlers::schema::add_column),
+                    )
+                    .route(
+                        "/databases/{name}/export.sql",
+                        web::get().to(handlers::schema::export_sql),
+                    )
+                    .route(
                         "/databases/{name}/sql",
                         web::post().to(handlers::sql::run_sql),
                     ),
