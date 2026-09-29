@@ -4,8 +4,10 @@ import { clearOctorAuthSession } from '@/store/octorAuthStore'
 import { reportAxiosError } from '@/utils/errorReporter'
 import appConfig from '@/configs/app.config'
 import { redirectToCentralAuthSignIn } from '@/auth/centralAuth'
+import { notifyIfInvalidTokenPayload } from './expiredTokenSession'
 
 const AxiosResponseIntrceptorErrorCallback = (error: AxiosError) => {
+    notifyIfInvalidTokenPayload(error.response?.data)
     void reportAxiosError(error)
 
     if (!shouldClearAuthSessionOnAxiosError(error)) {
