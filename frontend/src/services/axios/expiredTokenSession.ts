@@ -1,6 +1,6 @@
 /** Aviso único quando a API devolve token inválido. */
 export const EXPIRED_TOKEN_USER_MESSAGE =
-    'Seu token expirou. Faça login novamente.'
+    'Este login foi encerrado. Faça login novamente.'
 
 export const EXPIRED_TOKEN_REASON = 'token_expired'
 
@@ -51,7 +51,7 @@ export function peekExpiredTokenReason(): boolean {
     }
 }
 
-/** Acrescenta prompt=login e reason na URL do portal, uma vez por sessão expirada. */
+/** Acrescenta prompt=login e reason na URL do portal, uma vez por login encerrado. */
 export function appendExpiredTokenLoginParams(url: string): string {
     if (!peekExpiredTokenReason() || typeof window === 'undefined') {
         return url
@@ -109,7 +109,7 @@ function showExpiredTokenNoticeOnce(): void {
     ].join(';')
 
     const title = document.createElement('h2')
-    title.textContent = 'Sessão expirada'
+    title.textContent = 'Sessão encerrada'
     title.style.cssText = 'margin:0 0 8px;font-size:1.25rem;'
 
     const text = document.createElement('p')
