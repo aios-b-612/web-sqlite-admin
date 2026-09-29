@@ -1,4 +1,5 @@
 import type { AxiosError } from 'axios'
+import { isInvalidTokenPayload } from '../services/axios/expiredTokenSession'
 
 const AUTH_DENIED_MARKERS = [
   'access denied',
@@ -59,6 +60,10 @@ export function shouldClearAuthSessionOnAxiosError(error: AxiosError): boolean {
 
   const requestUrl = error.config?.url
   if (requestUrl?.includes('/auth/session')) return false
+  if (isInvalidTokenPayload(error.response?.data)) {
+  return true
+  }
+
   if (isAuthDeniedPayload(error.response?.data)) return true
   if (![401, 419, 440].includes(status)) return false
   return isAuthIdentityRequest(requestUrl)

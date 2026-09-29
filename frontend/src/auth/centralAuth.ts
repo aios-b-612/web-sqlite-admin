@@ -3,6 +3,7 @@ import {
   rememberAuthReturnPath,
   parseSameOriginReturnPath,
 } from '@/auth/returnPath'
+import { appendExpiredTokenLoginParams } from '../services/axios/expiredTokenSession'
 
 export function isCentralAuthEnabled(
   authApiPrefix: string,
@@ -56,14 +57,12 @@ export function redirectToCentralAuthSignIn(
     : '/home',
   options?: { promptLogin?: boolean },
 ): void {
-  window.location.replace(
-    buildCentralAuthSignInUrl(
+  window.location.replace(appendExpiredTokenLoginParams(buildCentralAuthSignInUrl(
       authPortalOrigin,
       returnPath,
       window.location.origin,
       options,
-    ),
-  )
+    )))
 }
 
 export function redirectToCentralAuthLogout(
