@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import useMergedRef from '../hooks/useMergeRef'
 import classNames from 'classnames'
+import { PiUserDuotone } from 'react-icons/pi'
 import type { CommonProps, TypeAttributes } from '../@types/common'
 import type { ReactNode, Ref } from 'react'
 
@@ -14,6 +15,8 @@ export interface AvatarProps extends CommonProps {
     src?: string
     srcSet?: string
 }
+
+const defaultProfileIcon = <PiUserDuotone />
 
 const Avatar = (props: AvatarProps) => {
     const {
@@ -29,12 +32,23 @@ const Avatar = (props: AvatarProps) => {
     } = props
 
     let { children } = props
+    const originalChildren = children
     const [scale, setScale] = useState(1)
+    const [imgFailed, setImgFailed] = useState(false)
+
+    useEffect(() => {
+        setImgFailed(false)
+    }, [src])
+
 
     const avatarChildren = useRef<HTMLSpanElement>(null)
     const avatarNode = useRef<HTMLSpanElement>(null)
 
     const avatarMergeRef = useMergedRef(ref, avatarNode)
+
+    const photoSrc = typeof src === 'string' ? src.trim() : ''
+    const showPhoto = Boolean(photoSrc) && !imgFailed
+    const resolvedIcon = icon ?? (originalChildren ? null : defaultProfileIcon)
 
     const innerScale = () => {
         if (!avatarChildren.current || !avatarNode.current) {
@@ -63,7 +77,7 @@ const Avatar = (props: AvatarProps) => {
                   height: size,
                   minWidth: size,
                   lineHeight: `${size}px`,
-                  fontSize: icon ? size / 2 : 12,
+                  fontSize: resolvedIcon ? size / 2 : 12,
               }
             : {}
 
@@ -74,20 +88,23 @@ const Avatar = (props: AvatarProps) => {
         className,
     )
 
-    if (src) {
+    if (showPhoto) {
         children = (
             <img
                 className={`avatar-img avatar-${shape}`}
-                src={src}
+                src={photoSrc}
                 srcSet={srcSet}
                 alt={alt}
-                loading="lazy"
+                loading='lazy'
+                onError={() => {
+                    setImgFailed(true)
+                }}
             />
         )
-    } else if (icon) {
+    } else if (resolvedIcon) {
         children = (
             <span className={classNames('avatar-icon', `avatar-icon-${size}`)}>
-                {icon}
+                {resolvedIcon}
             </span>
         )
     } else {
@@ -108,7 +125,7 @@ const Avatar = (props: AvatarProps) => {
                     ...(typeof size === 'number' ? { height: size } : {}),
                 }}
             >
-                {children}
+                {originalChildren}
             </span>
         )
     }
@@ -118,6 +135,8 @@ const Avatar = (props: AvatarProps) => {
             ref={avatarMergeRef}
             className={classes}
             style={{ ...sizeStyle, ...rest.style }}
+            role={!showPhoto && alt ? 'img' : undefined}
+            aria-label={!showPhoto && alt ? alt : undefined}
             {...rest}
         >
             {children}
