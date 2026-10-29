@@ -16,6 +16,7 @@ import {
 } from '@/components/layouts/PanelShell'
 
 import type { JSX } from 'react'
+import { resolveAccountAppUrl } from '@/utils/resolveAccountAppUrl'
 
 type DropdownList = {
     label: string
@@ -48,6 +49,9 @@ const _UserDropdown = () => {
             ? { src: session?.user?.image }
             : { icon: <PiUserDuotone /> }),
     }
+
+    const accountHref = resolveAccountAppUrl()
+
 
     return (
         <Dropdown
@@ -88,6 +92,19 @@ const _UserDropdown = () => {
                     </Link>
                 </Dropdown.Item>
             ))}
+            <Dropdown.Item eventKey="My Account" className="px-0">
+                <a
+                    className="flex h-full w-full px-2 gap-2 items-center"
+                    href={accountHref}
+                >
+                    <span className="text-xl">
+                        <PiUserDuotone />
+                    </span>
+                    <span>Minha conta</span>
+                </a>
+            </Dropdown.Item>
+            <Dropdown.Item variant="divider" />
+
             <Dropdown.Item
                 eventKey="Sign Out"
                 className="gap-2"
