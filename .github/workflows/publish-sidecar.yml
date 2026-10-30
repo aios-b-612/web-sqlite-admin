@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   sidecar:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, docker, octor-prd]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
